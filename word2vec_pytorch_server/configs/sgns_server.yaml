@@ -1,0 +1,50 @@
+run:
+  name: sgns_large_corpus
+  output_dir: runs
+  seed: 42
+  deterministic: false
+
+data:
+  # Change this to the large plain-text corpus on the server.
+  corpus_path: /data/corpus.txt
+  processed_dir: data/processed/large_corpus
+  max_tokens: null
+  min_count: 20
+  validation_ratio: 0.01
+  subsampling:
+    enabled: true
+    threshold: 1.0e-5
+
+model:
+  architecture: skipgram
+  embedding_dim: 300
+  window_size: 5
+  dynamic_window: true
+  negative_samples: 15
+  evaluation_embedding: input
+
+training:
+  epochs: 5
+  batch_size: 4096
+  learning_rate: 0.001
+  optimizer: adamw
+  weight_decay: 0.0
+  precision: bf16
+  device: auto
+  num_workers: 4
+  log_every_steps: 100
+  validation_max_pairs: 1000000
+  gradient_clip_norm: null
+  max_steps: null
+
+checkpoint:
+  save_last: true
+
+evaluation:
+  wordsim353_path: data/raw/wordsim353.tsv
+  google_analogy_path: data/raw/questions-words.txt
+  # Keep evaluation practical when the training vocabulary contains millions of words.
+  max_vocabulary: 200000
+  query_batch_size: 256
+  candidate_chunk_size: 50000
+  device: auto
