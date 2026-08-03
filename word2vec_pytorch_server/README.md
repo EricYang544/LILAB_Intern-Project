@@ -9,7 +9,7 @@ run outputs are intentionally excluded.
 
 ## 1. Copy to the server
 
-Copy the entire `go_server` directory. The large corpus must be a UTF-8 plain-text
+Copy the entire `word2vec_pytorch_server` directory. The large corpus must be a UTF-8 plain-text
 file; whitespace is used as the tokenizer and text is lower-cased.
 
 ## 2. Environment
@@ -19,7 +19,7 @@ the remaining requirements. Installing `requirements.txt` directly also works wh
 the default PyTorch wheel matches the server.
 
 ```bash
-cd go_server
+cd word2vec_pytorch_server
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
