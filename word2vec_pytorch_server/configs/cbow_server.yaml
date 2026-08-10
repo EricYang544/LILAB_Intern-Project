@@ -8,6 +8,7 @@ data:
   # This may share processed_dir with SGNS when preprocessing settings are identical.
   corpus_path: /data/corpus.txt
   processed_dir: data/processed/large_corpus
+  sentence_per_line: true
   max_tokens: null
   min_count: 20
   validation_ratio: 0.01

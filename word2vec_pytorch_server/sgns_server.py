@@ -90,15 +90,24 @@ def configure_logging(path: Path) -> logging.Logger:
     return logger
 
 
-def iter_tokens(path: Path, max_tokens: int | None) -> Iterator[str]:
+def iter_tokenized_lines(path: Path, max_tokens: int | None) -> Iterator[list[str]]:
     emitted = 0
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
-            for token in line.lower().split():
-                if max_tokens is not None and emitted >= max_tokens:
+            tokens = line.lower().split()
+            if max_tokens is not None:
+                remaining = max_tokens - emitted
+                if remaining <= 0:
                     return
-                yield token
-                emitted += 1
+                tokens = tokens[:remaining]
+            if tokens:
+                yield tokens
+                emitted += len(tokens)
+
+
+def iter_tokens(path: Path, max_tokens: int | None) -> Iterator[str]:
+    for tokens in iter_tokenized_lines(path, max_tokens):
+        yield from tokens
 
 
 def flush_ids(buffer: list[int], handle: Any, dtype: np.dtype) -> int:
@@ -134,6 +143,8 @@ def preprocess(config: dict[str, Any]) -> dict[str, Any]:
     encoded_total = int(frequencies.sum())
     split = int(encoded_total * (1.0 - data.get("validation_ratio", 0.01)))
     dtype = np.dtype("uint32" if len(words) < 2**32 else "uint64")
+    sentence_per_line = bool(data.get("sentence_per_line", False))
+    sentence_boundary_id = len(words) if sentence_per_line else None
     sub = data.get("subsampling", {})
     threshold = float(sub.get("threshold", 1e-5))
     relative = frequencies.astype(np.float64) / encoded_total
@@ -144,26 +155,39 @@ def preprocess(config: dict[str, Any]) -> dict[str, Any]:
     train_buffer: list[int] = []
     validation_buffer: list[int] = []
     encoded_index = train_count = validation_count = original_train = 0
+    train_items = validation_items = 0
     buffer_size = 1_000_000
     print("Pass 2/2: encoding and streaming token IDs to disk", flush=True)
     with train_path.open("wb") as train_file, validation_path.open("wb") as validation_file:
-        for token in iter_tokens(corpus, max_tokens):
-            token_id = word_to_id.get(token)
-            if token_id is None:
-                continue
-            if encoded_index < split:
-                original_train += 1
-                if not enabled or rng.random() < keep_prob[token_id]:
-                    train_buffer.append(token_id)
-                    if len(train_buffer) >= buffer_size:
-                        train_count += flush_ids(train_buffer, train_file, dtype)
-            else:
-                validation_buffer.append(token_id)
-                if len(validation_buffer) >= buffer_size:
-                    validation_count += flush_ids(validation_buffer, validation_file, dtype)
-            encoded_index += 1
-        train_count += flush_ids(train_buffer, train_file, dtype)
-        validation_count += flush_ids(validation_buffer, validation_file, dtype)
+        for line_tokens in iter_tokenized_lines(corpus, max_tokens):
+            line_has_train = False
+            line_has_validation = False
+            for token in line_tokens:
+                token_id = word_to_id.get(token)
+                if token_id is None:
+                    continue
+                if encoded_index < split:
+                    line_has_train = True
+                    original_train += 1
+                    if not enabled or rng.random() < keep_prob[token_id]:
+                        train_buffer.append(token_id)
+                        train_count += 1
+                else:
+                    line_has_validation = True
+                    validation_buffer.append(token_id)
+                    validation_count += 1
+                encoded_index += 1
+            if sentence_boundary_id is not None:
+                if line_has_train:
+                    train_buffer.append(sentence_boundary_id)
+                if line_has_validation:
+                    validation_buffer.append(sentence_boundary_id)
+            if len(train_buffer) >= buffer_size:
+                train_items += flush_ids(train_buffer, train_file, dtype)
+            if len(validation_buffer) >= buffer_size:
+                validation_items += flush_ids(validation_buffer, validation_file, dtype)
+        train_items += flush_ids(train_buffer, train_file, dtype)
+        validation_items += flush_ids(validation_buffer, validation_file, dtype)
     vocabulary = {
         "id_to_word": words,
         "frequencies": frequencies.tolist(),
@@ -178,6 +202,10 @@ def preprocess(config: dict[str, Any]) -> dict[str, Any]:
         "train_tokens_before_subsampling": original_train,
         "train_tokens": train_count,
         "validation_tokens": validation_count,
+        "train_items": train_items,
+        "validation_items": validation_items,
+        "sentence_per_line": sentence_per_line,
+        "sentence_boundary_id": sentence_boundary_id,
         "validation_ratio": data.get("validation_ratio", 0.01),
         "subsampling": {
             "enabled": enabled,
@@ -211,7 +239,7 @@ class Vocabulary:
 
 
 def load_tokens(processed: Path, split: str, metadata: dict[str, Any]) -> np.memmap:
-    count = int(metadata[f"{split}_tokens"])
+    count = int(metadata.get(f"{split}_items", metadata[f"{split}_tokens"]))
     return np.memmap(processed / f"{split}_tokens.bin", mode="r", dtype=metadata["dtype"], shape=(count,))
 
 
@@ -231,12 +259,14 @@ class SkipGramPairs(IterableDataset):
         dynamic_window: bool,
         seed: int,
         max_pairs: int | None = None,
+        sentence_boundary_id: int | None = None,
     ) -> None:
         self.tokens = tokens
         self.window_size = window_size
         self.dynamic_window = dynamic_window
         self.seed = seed
         self.max_pairs = max_pairs
+        self.sentence_boundary_id = sentence_boundary_id
 
     def __iter__(self) -> Iterator[tuple[int, int]]:
         worker = get_worker_info()
@@ -245,21 +275,26 @@ class SkipGramPairs(IterableDataset):
         stop = len(self.tokens) * (worker_id + 1) // workers
         produced = 0
         for center_index in range(start, stop):
+            center = int(self.tokens[center_index])
+            if center == self.sentence_boundary_id:
+                continue
             window = (
                 hashed_window(center_index, self.window_size, self.seed)
                 if self.dynamic_window
                 else self.window_size
             )
-            left = max(0, center_index - window)
-            right = min(len(self.tokens), center_index + window + 1)
-            center = int(self.tokens[center_index])
-            for context_index in range(left, right):
-                if context_index == center_index:
-                    continue
-                yield center, int(self.tokens[context_index])
-                produced += 1
-                if self.max_pairs is not None and produced >= self.max_pairs:
-                    return
+            for direction in (-1, 1):
+                for distance in range(1, window + 1):
+                    context_index = center_index + direction * distance
+                    if context_index < 0 or context_index >= len(self.tokens):
+                        break
+                    context = int(self.tokens[context_index])
+                    if context == self.sentence_boundary_id:
+                        break
+                    yield center, context
+                    produced += 1
+                    if self.max_pairs is not None and produced >= self.max_pairs:
+                        return
 
 
 class CBOWExamples(IterableDataset):
@@ -270,12 +305,14 @@ class CBOWExamples(IterableDataset):
         dynamic_window: bool,
         seed: int,
         max_examples: int | None = None,
+        sentence_boundary_id: int | None = None,
     ) -> None:
         self.tokens = tokens
         self.window_size = window_size
         self.dynamic_window = dynamic_window
         self.seed = seed
         self.max_examples = max_examples
+        self.sentence_boundary_id = sentence_boundary_id
 
     def __iter__(self) -> Iterator[tuple[list[int], int]]:
         worker = get_worker_info()
@@ -284,17 +321,31 @@ class CBOWExamples(IterableDataset):
         stop = len(self.tokens) * (worker_id + 1) // workers
         produced = 0
         for target_index in range(start, stop):
+            target = int(self.tokens[target_index])
+            if target == self.sentence_boundary_id:
+                continue
             window = (
                 hashed_window(target_index, self.window_size, self.seed)
                 if self.dynamic_window
                 else self.window_size
             )
-            left = max(0, target_index - window)
-            right = min(len(self.tokens), target_index + window + 1)
-            context = [int(self.tokens[index]) for index in range(left, right) if index != target_index]
+            context: list[int] = []
+            for direction in (-1, 1):
+                directional_context: list[int] = []
+                for distance in range(1, window + 1):
+                    context_index = target_index + direction * distance
+                    if context_index < 0 or context_index >= len(self.tokens):
+                        break
+                    context_id = int(self.tokens[context_index])
+                    if context_id == self.sentence_boundary_id:
+                        break
+                    directional_context.append(context_id)
+                if direction == -1:
+                    directional_context.reverse()
+                context.extend(directional_context)
             if not context:
                 continue
-            yield context, int(self.tokens[target_index])
+            yield context, target
             produced += 1
             if self.max_examples is not None and produced >= self.max_examples:
                 return
@@ -476,6 +527,14 @@ def train(config: dict[str, Any], resume: str | None) -> dict[str, Any]:
     if not metadata_path.is_file():
         preprocess(config)
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    requested_sentence_boundaries = bool(data.get("sentence_per_line", False))
+    processed_sentence_boundaries = bool(metadata.get("sentence_per_line", False))
+    if requested_sentence_boundaries != processed_sentence_boundaries:
+        raise ValueError(
+            "data.sentence_per_line does not match the existing processed data. "
+            "Use a new data.processed_dir and run preprocessing again."
+        )
+    sentence_boundary_id = metadata.get("sentence_boundary_id")
     vocabulary = Vocabulary.load(processed / "vocabulary.json")
     train_tokens = load_tokens(processed, "train", metadata)
     validation_tokens = load_tokens(processed, "validation", metadata)
@@ -486,6 +545,7 @@ def train(config: dict[str, Any], resume: str | None) -> dict[str, Any]:
             model_config["window_size"],
             model_config.get("dynamic_window", True),
             run["seed"],
+            sentence_boundary_id=sentence_boundary_id,
         )
         validation_dataset = SkipGramPairs(
             validation_tokens,
@@ -493,6 +553,7 @@ def train(config: dict[str, Any], resume: str | None) -> dict[str, Any]:
             model_config.get("dynamic_window", True),
             run["seed"],
             training.get("validation_max_pairs"),
+            sentence_boundary_id,
         )
         collate_fn = None
     elif architecture == "cbow":
@@ -501,6 +562,7 @@ def train(config: dict[str, Any], resume: str | None) -> dict[str, Any]:
             model_config["window_size"],
             model_config.get("dynamic_window", True),
             run["seed"],
+            sentence_boundary_id=sentence_boundary_id,
         )
         validation_dataset = CBOWExamples(
             validation_tokens,
@@ -508,6 +570,7 @@ def train(config: dict[str, Any], resume: str | None) -> dict[str, Any]:
             model_config.get("dynamic_window", True),
             run["seed"],
             training.get("validation_max_examples"),
+            sentence_boundary_id,
         )
         collate_fn = collate_cbow
     else:

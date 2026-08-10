@@ -46,6 +46,24 @@ frequency dictionary in RAM, but writes encoded train/validation tokens directly
 disk as `uint32`/`uint64` binary arrays. Training memory therefore does not scale with
 the number of generated center-context pairs.
 
+### Sentence boundaries
+
+For corpora such as LM1B where each line is one sentence, set:
+
+```yaml
+data:
+  sentence_per_line: true
+```
+
+Preprocessing then writes a reserved boundary ID between lines. The boundary is not a
+vocabulary word, is never sampled or embedded, and stops Skip-gram/CBOW context lookup
+in both directions. Changing this option requires preprocessing into a new
+`data.processed_dir`; old token binaries cannot be reused.
+
+For the current LM1B experiment, use `configs/sgns_lm1b_sentence_aware.yaml`. It keeps
+the previous model/training hyperparameters, uses a new processed directory and run
+name, and evaluates against the full learned vocabulary.
+
 ## 4. Run
 
 ```bash
@@ -53,6 +71,14 @@ bash scripts/download_eval_data.sh
 bash scripts/preprocess.sh configs/sgns_server.yaml
 bash scripts/train.sh configs/sgns_server.yaml
 bash scripts/eval.sh runs/sgns_large_corpus
+```
+
+Sentence-aware LM1B comparison run:
+
+```bash
+bash scripts/preprocess.sh configs/sgns_lm1b_sentence_aware.yaml
+bash scripts/train.sh configs/sgns_lm1b_sentence_aware.yaml
+bash scripts/eval.sh runs/sgns_lm1b_sentence_aware
 ```
 
 CBOW uses the same commands with its own config and run name:
