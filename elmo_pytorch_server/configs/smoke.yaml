@@ -1,0 +1,62 @@
+project_root: ..
+seed: 42
+device: cpu
+threads: 1
+smoke: true
+data_dir: data/smoke/prepared
+raw_dir: data/smoke/raw
+run_dir: runs/smoke
+pilot_dir: runs/smoke_pilot
+sources: {}
+prepare:
+  train_tokens: 300
+  valid_tokens: 100
+  vocab_size: 50
+  max_lm_tokens: 12
+  expected_ner_counts: [16, 4, 4]
+model:
+  hidden: 16
+  projection: 8
+  char_dim: 4
+  filters: [[1, 4], [2, 4], [3, 8]]
+  highways: 1
+  max_chars: 16
+  dropout: 0.0
+lm:
+  batch_size: 4
+  accumulation: 1
+  lr: 0.01
+  clip: 5.0
+  max_tokens: 100
+  eval_every_tokens: 100
+  checkpoint_every_steps: 2
+  softmax_chunk: 32
+  amp: false
+ner:
+  seeds: [13, 21]
+  batch_size: 4
+  char_dim: 4
+  char_filters: 8
+  hidden: [8, 4]
+  dropout: 0.0
+  elmo_dropout: 0.0
+  mix_l2: 0.1
+  lr: 0.01
+  clip: 5.0
+  max_epochs: 2
+  patience: 2
+  batch_tokens: 64
+features:
+  batch_size: 4
+  batch_tokens: 64
+  dtype: float32
+budget:
+  hours: 0.2
+  pilot_hours: 0.03
+  lm_hours: 0.05
+  feature_hours: 0.02
+  ner_hours: 0.07
+  reserve_hours: 0.03
+  safety_factor: 1.3
+  pilot_warmup: 1
+  pilot_steps: 2

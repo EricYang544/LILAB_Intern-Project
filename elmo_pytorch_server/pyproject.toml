@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lilab-elmo"
+version = "0.1.0"
+description = "Budgeted ELMo depth ablation on CoNLL-2003"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.7,<3", "numpy>=1.26,<3", "PyYAML>=6,<7", "h5py>=3.11,<4", "matplotlib>=3.8,<4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

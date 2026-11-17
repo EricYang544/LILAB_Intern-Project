@@ -1,0 +1,70 @@
+# Paths are relative to the project root, never to the current shell directory.
+project_root: ..
+seed: 42
+device: auto
+threads: 4
+smoke: false
+data_dir: data/prepared
+raw_dir: data/raw
+run_dir: runs/ner_24h
+pilot_dir: runs/pilot
+sources:
+  lm: https://www.statmt.org/lm-benchmark/1-billion-word-language-modeling-benchmark-r13output.tar.gz
+  lm_sha256: 01ba60381110baf7f189dfd2b8374de371e8c9a340835793f190bdae9e90a34e
+  conll: https://data.deepai.org/conll2003.zip
+  senna: https://ronan.collobert.com/senna/senna-v3.0.tgz
+  elmo_options: https://allennlp.s3.amazonaws.com/models/elmo/2x4096_512_2048cnn_2xhighway/options.json
+  elmo_weights: https://allennlp.s3.amazonaws.com/models/elmo/2x4096_512_2048cnn_2xhighway/weights.hdf5
+  conlleval: https://raw.githubusercontent.com/glample/tagger/master/evaluation/conlleval
+prepare:
+  train_tokens: 50000000
+  valid_tokens: 100000
+  vocab_size: 50000
+  max_lm_tokens: 64
+  expected_ner_counts: [14041, 3250, 3453]
+model:
+  hidden: 1024
+  projection: 128
+  char_dim: 16
+  filters: [[1, 32], [2, 32], [3, 64], [4, 128], [5, 128], [6, 128], [7, 128]]
+  highways: 2
+  max_chars: 50
+  dropout: 0.1
+lm:
+  batch_size: 32
+  accumulation: 2
+  lr: 0.001
+  clip: 5.0
+  max_tokens: 100000000
+  eval_every_tokens: 5000000
+  checkpoint_every_steps: 500
+  softmax_chunk: 128
+  amp: true
+ner:
+  seeds: [13, 21, 42, 87, 100]
+  batch_size: 32
+  char_dim: 16
+  char_filters: 128
+  hidden: [200, 100]
+  dropout: 0.5
+  elmo_dropout: 0.5
+  mix_l2: 0.1
+  lr: 0.001
+  clip: 5.0
+  max_epochs: 50
+  patience: 8
+  batch_tokens: 2048
+features:
+  batch_size: 16
+  batch_tokens: 1024
+  dtype: float16
+budget:
+  hours: 24
+  pilot_hours: 1
+  lm_hours: 14
+  feature_hours: 2
+  ner_hours: 5
+  reserve_hours: 2
+  safety_factor: 1.3
+  pilot_warmup: 3
+  pilot_steps: 12
