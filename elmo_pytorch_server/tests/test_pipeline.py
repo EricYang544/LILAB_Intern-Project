@@ -41,7 +41,9 @@ class PipelineTests(unittest.TestCase):
 
     def test_production_pilot_excludes_public_by_default(self):
         self.cfg["smoke"] = False
-        with patch("elmo_project.evaluation.verify_official"), \
+        # Test arm selection on CPU without invoking the production CUDA preflight.
+        with patch("elmo_project.pilot.device_for", return_value=torch.device("cpu")), \
+             patch("elmo_project.evaluation.verify_official"), \
              patch("elmo_project.pilot.measure_lm", return_value={"step_seconds": 0.01, "words_per_step": 20, "validation_seconds": 0.01}), \
              patch("elmo_project.pilot.measure_features", return_value=0.01), \
              patch("elmo_project.pilot.measure_ner", return_value={"train": 0.01, "dev": 0.01, "test": 0.01}), \
