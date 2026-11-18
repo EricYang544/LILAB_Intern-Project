@@ -9,7 +9,8 @@ PyTorch로 문자 기반 양방향 언어모델을 직접 학습하고, CoNLL-20
 | `static` | SENNA 50d + 문자 CNN | 없음 |
 | `depth1` | static + 문맥 표현 | 직접 학습한 1층 |
 | `depth2` | static + 문맥 표현 | 직접 학습한 2층 |
-| `public` | static + 문맥 표현 | 원문 계열 공개 ELMo |
+
+`include_public_elmo: false`가 기본값이다. 공개 ELMo는 다운로드·실행하지 않고 원문 점수는 문헌 참고값으로만 제시한다. 기본 실행은 3개 조건 × 5개 시드, 총 15회 NER 학습이다.
 
 NER는 모든 조건에서 2층 BiLSTM(200/100 hidden units per direction) + CRF를 사용한다. 변경하는 depth는 **사전학습 biLM의 깊이**다. 직접 학습 모델은 방향별 hidden 1024, projection 128, 문자 CNN + highway로 구성한다. 두 방향은 별도 LSTM 스택을 사용하고 문자 인코더와 출력 softmax를 공유한다. NER 학습에서는 biLM을 고정하고 scalar mix·SENNA·NER 모델을 학습한다.
 
@@ -50,7 +51,7 @@ smoke는 합성 데이터·작은 모델·3개 arm·2개 시드만 사용한다.
 
 프로젝트의 `src/`, `configs/`, `scripts/`, `tests/`, `pyproject.toml`, 문서를 복사한다. `.venv`, `__pycache__`, 로컬 smoke 데이터와 `runs/`는 제외한다. 서버에서 가상환경을 새로 만들고 editable install을 실행한다. 설정의 경로는 프로젝트 루트 기준이므로 디렉터리 위치가 달라도 된다.
 
-원본 데이터와 공개 가중치는 서버의 `data/raw/`에 다운로드한다. 압축 해제·준비 데이터·특징 캐시·체크포인트를 위해 여유 디스크를 확보한다. 30GB 이상의 여유를 권장하되 실제 사용량은 데이터와 checkpoint 크기에 따라 달라진다.
+원본 데이터·SENNA 정적 임베딩·CoNLL 평가기를 서버의 `data/raw/`에 다운로드한다. 압축 해제·준비 데이터·특징 캐시·체크포인트를 위해 여유 디스크를 확보한다. 30GB 이상의 여유를 권장하되 실제 사용량은 데이터와 checkpoint 크기에 따라 달라진다.
 
 ## 실행 순서
 
@@ -64,7 +65,7 @@ python -m elmo_project.report --run-dir runs/ner_24h
 처음부터 실행하려면 `bash scripts/reproduce_final.sh`를 사용한다. **재개할 때는 pilot을 다시 실행하지 말고 `run` 명령만 반복한다.** Pilot은 실행할 때마다 새 실측 계획 ID를 만든다.
 
 - `prepare`: 원본 다운로드·추출, CoNLL 크기 검사, IOB2 변환, 고정 LM 부분집합, 메모리 매핑 배열, SENNA 행렬을 만든다. manifest와 모든 준비 파일의 SHA-256을 저장한다. 실패한 다운로드는 `.part`에 남고 재실행 시 다시 받는다. URL이 변경되었거나 직접 받은 파일이 있다면 `data/README.md`를 따른다.
-- `pilot`: 실제 데이터 길이 분포에서 두 LM의 optimizer step, exact-softmax 검증, 세 종류의 특징 추출, 네 NER 조건의 비용을 측정한다. 점수에 따른 튜닝을 하지 않는다. GPU 정보와 추정 시간을 `runs/pilot/measurements.json`에 저장한다.
+- `pilot`: 실제 데이터 길이 분포에서 두 LM의 optimizer step, exact-softmax 검증, 두 종류의 특징 추출, 세 NER 조건의 비용을 측정한다. 점수에 따른 튜닝을 하지 않는다. GPU 정보와 추정 시간을 `runs/pilot/measurements.json`에 저장한다.
 - `run`: 고정 계획의 두 LM을 같은 batch 순서·step 한도·토큰 상한으로 학습한다. best LM은 검증 NLL, best NER는 dev F1로 선택한다. 모든 NER 학습 완료 후 test를 평가하고 `conlleval`과 결과를 대조한다.
 - `report`: 완료된 모든 arm/seed가 있을 때만 평균·표준편차·개선량을 생성한다. 최상 test 시드를 선택하거나 미완료 실험을 평균에 포함하지 않는다.
 
@@ -88,10 +89,10 @@ python -m elmo_project.run --plan runs/pilot/resolved_plan.json --extend-hours 4
 - LM 학습 문장은 최대 64단어 조각으로 나누고 BOS/EOS를 추가한다. 각 조각의 상태를 초기화한다. 원문의 stateful truncated BPTT와 다르다. NER 문장은 자르지 않는다.
 - CoNLL: train/dev/test 14,041/3,250/3,453문장. 문서 구분행은 제외하며 원래 token·문장 경계를 유지한다. POS/chunk 라벨과 gazetteer는 사용하지 않는다. LM train에서 NER dev/test와 정확히 같은 문장은 제외한다.
 - SENNA: 원형 일치, 소문자, 숫자를 `0`으로 정규화한 순서로 조회한다. train 단어와 원래 SENNA lexicon만 lookup에 등록한다. NER train에서 못 본 단어도 SENNA가 알고 있다면 공개 벡터를 사용한다.
-- 공개 ELMo: 원문의 1B Word 가중치이며 5.5B 모델과 혼용하지 않는다. HDF5의 공식 CNN·highway·LSTMP 형식을 읽는 추론 전용 어댑터를 사용한다. 모든 문장 상태를 초기화한다. 참조 구현의 배치 간 state carry 및 과제별 LM 적응 학습을 생략했으므로 완전한 원문 재현이라고 부르지 않는다.
+- 원문 점수는 문헌 참고값이다. 공개 ELMo 모델을 실행한 결과나 본 구현의 재현 점수로 표시하지 않는다.
 - 직접 학습 모델은 PyTorch projected LSTM을 사용하므로 원문 cell/projection clipping과도 차이가 있다. 원문과 같은 크기·학습량·출력 어휘가 아니므로 perplexity나 F1의 일치가 구현 정확성의 필수 조건은 아니다.
 
-공개 가중치 어댑터는 NumPy 수식과 셀 수준으로 교차 검증하는 테스트를 포함한다. 원본 TensorFlow/AllenNLP와 실제 공개 가중치 출력의 수치 동등성 검사는 `scripts/export_reference_oracle.py`와 `scripts/check_reference_oracle.py`로 별도로 실행할 수 있다. 이는 오래된 참조 환경과 현재 PyTorch 환경을 분리해 실행하는 검사이며 본 학습의 의존성은 아니다.
+선택적 공개 가중치 어댑터와 참조 출력 검사 스크립트는 보관하되 기본 실험에서는 사용하지 않는다. 나중에 공개 모델 비교를 추가하려면 `include_public_elmo: true`로 설정하고 새 `data_dir`/`run_dir`/`pilot_dir`에서 준비·pilot부터 실행한다. 이 비교군은 NER LM 적응 학습을 생략하므로 완전한 원문 재현이 아니다.
 
 ## 결과와 해석
 
@@ -103,10 +104,10 @@ python -m elmo_project.run --plan runs/pilot/resolved_plan.json --extend-hours 4
 - `lm_resources.json`: 실제 처리 토큰·throughput·학습률·시간·VRAM.
 - `errors_<arm>.json`: 고정된 첫 seed의 오류 20문장과 gold/predicted span. 언어적 오류 해석은 사람이 채울 수 있도록 비워 둔다.
 
-외부 기준은 [ELMo 논문](https://aclanthology.org/N18-1202.pdf)의 baseline 90.15 F1 / ELMo 92.22 ± 0.10 F1, [Lample et al.](https://aclanthology.org/N16-1030.pdf)의 90.94 F1이다. 점수 옆에 설정 차이를 기록한다. 먼저 static baseline, 다음 public 기준점, 마지막 직접 학습한 두 depth의 차이를 점검한다. static 점수가 원문과 1 F1 이상 차이 나면 전처리·평가·학습 상태를 우선 확인하되 이를 보편적인 통과 기준으로 주장하지 않는다.
+외부 기준은 [ELMo 논문](https://aclanthology.org/N18-1202.pdf)의 baseline 90.15 F1 / ELMo 92.22 ± 0.10 F1, [Lample et al.](https://aclanthology.org/N16-1030.pdf)의 90.94 F1이다. 점수 옆에 설정 차이를 기록한다. 먼저 직접 측정한 static 대비 개선과 두 depth의 차이를 점검하고, 문헌 점수와의 차이는 학습량·모델 규모·학습 방식 차이를 함께 고려해 해석한다. static 점수가 원문과 1 F1 이상 차이 나면 전처리·평가·학습 상태를 우선 확인하되 이를 보편적인 통과 기준으로 주장하지 않는다.
 
 각 depth의 사전학습 seed는 하나다. NER 5회 표준편차는 사전학습 변동성을 포함하지 않는다. depth는 파라미터 수와 계산량도 바꾸므로 깊이만의 인과 효과로 해석하지 않는다. static 대비 개선에는 추가 모델 용량과 사전학습 효과도 포함된다.
 
 ## 구조
 
-`src/elmo_project/`에는 데이터 준비·모델·캐시·학습·평가·예산 계산 모듈이 있다. `configs/`는 실험 설정, `scripts/`는 실행 및 검사 도구, `tests/`는 정확성·재개·통합 검증을 담는다. `data/`와 `runs/`의 생성 파일은 버전 관리에서 제외한다. 이 패키지의 기준 디렉터리는 `elmo_pytorch_server/`다.
+`src/elmo_project/`에는 데이터 준비·모델·캐시·학습·평가·예산 계산 모듈이 있다. `configs/`는 실험 설정, `scripts/`는 실행 및 검사 도구, `tests/`는 정확성·재개·통합 검증을 담는다. `data/`와 `runs/`의 생성 파일은 버전 관리에서 제외한다. 이 하위 폴더의 실행 절차는 본 README를 따른다.

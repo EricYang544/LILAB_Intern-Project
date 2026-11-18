@@ -2,6 +2,7 @@ import copy
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 try:
     import torch
     import numpy as np
@@ -37,6 +38,18 @@ class PipelineTests(unittest.TestCase):
         self.cfg["lm"]["eval_every_tokens"] = 10000
         torch.set_num_threads(1)
         prepare(self.cfg)
+
+    def test_production_pilot_excludes_public_by_default(self):
+        self.cfg["smoke"] = False
+        with patch("elmo_project.evaluation.verify_official"), \
+             patch("elmo_project.pilot.measure_lm", return_value={"step_seconds": 0.01, "words_per_step": 20, "validation_seconds": 0.01}), \
+             patch("elmo_project.pilot.measure_features", return_value=0.01), \
+             patch("elmo_project.pilot.measure_ner", return_value={"train": 0.01, "dev": 0.01, "test": 0.01}), \
+             patch("elmo_project.pilot.public_model", side_effect=AssertionError("Public ELMo must not load")):
+            plan = pilot(self.cfg)
+        self.assertEqual(plan["arms"], ["static", "depth1", "depth2"])
+        self.assertEqual(set(plan["measurements"]["features"]), {"depth1", "depth2"})
+        self.assertEqual(set(plan["measurements"]["ner"]), {"static", "depth1", "depth2"})
 
     def test_prepared_data_detects_tampering(self):
         path = Path(self.cfg["data_dir"]) / "ner_train.jsonl"

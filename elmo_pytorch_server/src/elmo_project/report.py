@@ -71,7 +71,8 @@ def report(run_dir):
         s = summary[arm]
         delta = s.get("paired_delta_vs_static", {}).get("mean", 0)
         lines.append(f"| {arm} | {s['mean']:.2f} ± {s['std']:.2f} | {s['n']} | {delta:+.2f} |")
-    lines += ["", "## 외부 비교", "",
+    lines += ["", "## 문헌 참고값 (본 실험의 측정값 아님)", "",
+              "아래 점수는 논문에 보고된 값이다. 학습 데이터량·모델 규모·학습 조건이 달라 직접 재현 결과로 해석하지 않는다.", "",
               "| 참고 연구 | CoNLL-2003 test F1 |",
               "|---|---:|",
               "| [ELMo baseline](https://aclanthology.org/N18-1202.pdf) | 90.15 |",
@@ -79,7 +80,8 @@ def report(run_dir):
               "| [Lample et al. 2016](https://aclanthology.org/N16-1030.pdf) | 90.94 |", "",
               "## 비교 조건과 한계", "",
               "- 직접 학습은 1B Word의 축소 코퍼스·50k 출력 어휘·축소 LSTMP를 사용한다.",
-              "- 공개 ELMo는 원문 계열 가중치지만 NER LM 적응 학습을 생략한다.",
+              ("- 선택적으로 실행한 공개 ELMo 비교군은 NER LM 적응 학습을 생략한다." if "public" in arms else
+               "- 공개 ELMo 모델은 다운로드하거나 실행하지 않는다. 원문 수치는 문헌 비교에만 사용한다."),
               "- 모든 임베딩은 문장마다 상태를 초기화한다. 원래 참조 구현의 배치 간 state carry와 다르다.",
               "- 긴 LM 문장을 고정 길이 조각으로 나누고 경계를 추가한다. NER 문장은 자르지 않는다.",
               "- SENNA는 원형 일치 후 소문자·숫자 정규화로 조회한다. coverage는 manifest에 기록한다.",

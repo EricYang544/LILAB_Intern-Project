@@ -29,3 +29,13 @@ bash scripts/smoke.sh
 ```
 
 그다음 production `prepare`와 `pilot`을 실행한다. Pilot은 Perl 평가기를 먼저 점검하고, 처리량과 메모리를 측정한 뒤 실행 가능 여부를 저장한다. 모델 테스트·smoke·pilot이 성공하기 전에는 구현 검증 완료나 24시간 완료를 주장하지 않는다.
+
+## 문헌 비교 전용 기본 설정 변경 검증
+
+2026-11-18: 현재 저장소에 수정분을 반영하고 재검증했다. 기본 비교군을 `static`, `depth1`, `depth2`로 제한했다.
+
+- unittest: **14개 통과, 14개 건너뜀**. 보조 런타임 NumPy를 사용했다.
+- 로컬 파일 URL로 production 데이터 다운로드·압축 해제·준비 경로를 검사했다. ELMo URL 없이 준비가 완료되고, 명시적 opt-in에서만 ELMo artifact를 받는 것을 확인했다.
+- 보고서의 문헌 수치가 측정 결과표·CSV·summary에 섞이지 않는 것을 확인했다.
+- 새 production pilot 비교군 테스트를 포함한 PyTorch 관련 14개는 로컬 의존성 부재로 실행하지 못했다. 서버에서 `python -m pytest -q`와 `bash scripts/smoke.sh`로 확인해야 한다.
+- 기본 실험에는 공개 ELMo 다운로드 및 원본 참조 구현과의 출력 대조가 필요하지 않다.

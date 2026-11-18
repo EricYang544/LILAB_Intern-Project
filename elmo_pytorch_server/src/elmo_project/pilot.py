@@ -163,7 +163,7 @@ def pilot(cfg):
         del model
         progress()
     arms = {"static": None, "depth1": [2, cfg["model"]["projection"] * 2], "depth2": [3, cfg["model"]["projection"] * 2]}
-    if not cfg.get("smoke"):
+    if cfg.get("include_public_elmo", False) and not cfg.get("smoke"):
         print("Measuring original public ELMo", flush=True)
         model = public_model(cfg, device)
         measured["features"]["public"] = measure_features(cfg, model, device, deadline)

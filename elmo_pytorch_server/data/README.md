@@ -7,8 +7,10 @@
 | `lm1b.tar.gz` | [1B Word Benchmark](https://www.statmt.org/lm-benchmark/) | 원문과 같은 코퍼스의 축소 사전학습 |
 | `conll2003.zip` | [CoNLL-2003 데이터 카드](https://huggingface.co/datasets/eriktks/conll2003)의 원본 loader가 사용하는 DeepAI 배포본 | 영어 NER 표준 분할 |
 | `senna.tgz` | [SENNA](https://ronan.collobert.com/senna/) | 공개 50d 정적 임베딩 |
-| `elmo_options.json`, `elmo_weights.hdf5` | [bilm-tf / AllenNLP](https://github.com/allenai/bilm-tf)의 original 2x4096/512 모델 | 공개 기준점 |
+| `elmo_options.json`, `elmo_weights.hdf5` | [bilm-tf / AllenNLP](https://github.com/allenai/bilm-tf)의 original 2x4096/512 모델 | 선택적 공개 비교군 (`include_public_elmo: true`일 때만) |
 | `conlleval.pl` | [Lample의 평가기 사본](https://github.com/glample/tagger/blob/master/evaluation/conlleval) | 독립적인 CoNLL entity F1 확인 |
+
+기본 설정은 `include_public_elmo: false`이므로 ELMo 설정·가중치를 받지 않는다. SENNA 정적 임베딩 다운로드는 유지하며, 두 depth의 biLM은 무작위 초기화부터 직접 학습한다.
 
 SENNA는 [연구·평가 목적의 비상업 라이선스](https://ronan.collobert.com/senna/download.html)를 사용한다. 데이터와 외부 가중치는 원래 배포처의 조건을 따르며 프로젝트 소스 배포물에 포함하지 않는다. CoNLL의 Reuters 원문과 배포 스크립트의 라이선스를 혼동하지 않는다.
 

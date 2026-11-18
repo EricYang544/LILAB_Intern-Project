@@ -136,8 +136,12 @@ def prepare(cfg):
     import numpy as np
     root, raw = Path(cfg["data_dir"]), Path(cfg["raw_dir"])
     root.mkdir(parents=True, exist_ok=True)
-    request_id = digest({"prepare": cfg["prepare"], "model_max_chars": cfg["model"]["max_chars"],
-                         "sources": cfg["sources"], "seed": cfg["seed"], "smoke": cfg.get("smoke", False)})
+    public_enabled = cfg.get("include_public_elmo", False) and not cfg.get("smoke", False)
+    request = {"prepare": cfg["prepare"], "model_max_chars": cfg["model"]["max_chars"],
+               "sources": cfg["sources"], "seed": cfg["seed"], "smoke": cfg.get("smoke", False)}
+    if public_enabled:
+        request["include_public_elmo"] = True
+    request_id = digest(request)
     manifest_path = root / "manifest.json"
     if manifest_path.exists():
         manifest = read_json(manifest_path)
@@ -151,8 +155,9 @@ def prepare(cfg):
         artifacts = {"synthetic": True}
     else:
         filenames = {"lm": "lm1b.tar.gz", "conll": "conll2003.zip", "senna": "senna.tgz",
-                     "elmo_options": "elmo_options.json", "elmo_weights": "elmo_weights.hdf5",
                      "conlleval": "conlleval.pl"}
+        if public_enabled:
+            filenames.update(elmo_options="elmo_options.json", elmo_weights="elmo_weights.hdf5")
         artifacts = {}
         for key, filename in filenames.items():
             artifacts[key] = {"url": cfg["sources"][key], "sha256": download(cfg["sources"][key], raw / filename, cfg["sources"].get(key + "_sha256"))}

@@ -4,6 +4,8 @@ seed: 42
 device: auto
 threads: 4
 smoke: false
+# Published ELMo scores are literature references only in the default experiment.
+include_public_elmo: false
 data_dir: data/prepared
 raw_dir: data/raw
 run_dir: runs/ner_24h
@@ -13,8 +15,8 @@ sources:
   lm_sha256: 01ba60381110baf7f189dfd2b8374de371e8c9a340835793f190bdae9e90a34e
   conll: https://data.deepai.org/conll2003.zip
   senna: https://ronan.collobert.com/senna/senna-v3.0.tgz
-  elmo_options: https://allennlp.s3.amazonaws.com/models/elmo/2x4096_512_2048cnn_2xhighway/options.json
-  elmo_weights: https://allennlp.s3.amazonaws.com/models/elmo/2x4096_512_2048cnn_2xhighway/weights.hdf5
+  elmo_options: https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json
+  elmo_weights: https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
   conlleval: https://raw.githubusercontent.com/glample/tagger/master/evaluation/conlleval
 prepare:
   train_tokens: 50000000
